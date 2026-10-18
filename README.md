@@ -75,7 +75,7 @@ Click the critter icon in the menu bar:
 - **Add account…** opens Terminal running `claude auth login` in a new folder. Log in with the account you want, and cctwin asks for a nickname once the login lands. To use an account that's signed in on another device, open the printed link there, approve, then paste the code back into the terminal and press Return. `claude auth login` hides the code while you paste, so the line stays blank.
 - **Click an account** to make it active. New `claude` sessions use it, and sessions that are already running keep theirs. Terminal tabs opened before the shell hook was installed need `source ~/.zshrc` once.
 - **Manage accounts › account › Open terminal** opens a window locked to that account. It stays on it even when you switch in the menu, so you can use two accounts at the same time.
-- **Continue on next account** (`⌥⇧⌘C`) is for when one plan hits its usage limit. It switches to the next account in the menu (after the last one it goes back to Default) and opens Terminal in the folder where you last ran `claude`, running `claude --continue`. Turn on **Shared session history** first, so the other account can see the conversation.
+- **Continue on next account** (`⌥⇧⌘C`) is for when one plan hits its usage limit. It switches to the next account in the menu (after the last one it goes back to Default) and opens Terminal in the folder where you last ran `claude`, running `claude --continue`. The other account can only see the conversation with **Shared session history** on; if it's off, cctwin asks whether to turn it on first.
 
 The same thing works from the command line:
 
@@ -91,7 +91,7 @@ Each account is its own Claude Code config folder in `~/.cctwin/accounts/<id>`. 
 - **Terminals.** The shell hook wraps `claude` so it reads `~/.cctwin/active` on every run and sets `CLAUDE_CONFIG_DIR` (or clears it for Default).
 - **GUI apps.** `launchctl setenv CLAUDE_CONFIG_DIR` applies to apps opened after the switch. An IDE that is already running keeps its old account, and cctwin warns you about that.
 
-cctwin makes no network calls on its own. The only one is **Check for updates…**, when you click it: it asks GitHub for the latest release and tells you how to update (`brew upgrade cctwin`, a new `.dmg`, and so on).
+cctwin makes no network calls on its own. The only one is **Check for updates…**, when you click it: it asks GitHub for the latest release and tells you how to update (`brew update && brew upgrade cctwin`, a new `.dmg`, and so on).
 
 The login for each account stays where Claude Code puts it: the macOS Keychain, scoped per folder. cctwin never reads, copies or sends tokens. The only file it reads inside an account folder is `.claude.json`, and only to show the email.
 

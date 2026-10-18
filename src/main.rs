@@ -187,7 +187,7 @@ fn tray() -> Result<()> {
             Event::UserEvent(Ev::Welcome(a)) => report(on_welcome(&p, &proxy, a)),
             Event::UserEvent(Ev::Menu(e)) => report(on_menu(&p, &proxy, e.id.0.as_str())),
             Event::UserEvent(Ev::Hotkey(e)) if e.state == HotKeyState::Pressed => {
-                report(continue_next(&p))
+                bg(&proxy, continue_next) // may ask about Shared session history
             }
             Event::UserEvent(Ev::Refresh) => {}
             _ => return,
@@ -457,18 +457,11 @@ fn on_menu(p: &Paths, proxy: &EventLoopProxy<Ev>, id: &str) -> Result<()> {
         "rename" => bg(proxy, move |p| rename(p, &acc.unwrap())),
         "remove" => bg(proxy, move |p| remove(p, &acc.unwrap())),
         "show" => mac::reveal(&acc.unwrap().dir),
-        "next" => continue_next(p)?,
+        "next" => bg(proxy, continue_next),
         "add" => bg(proxy, add),
         "shared" => {
-            cfg.shared_history = !cfg.shared_history;
-            for a in &cfg.accounts {
-                if cfg.shared_history {
-                    state::link_shared(p, &a.dir)?
-                } else {
-                    state::unlink_shared(&a.dir)?
-                }
-            }
-            cfg.save(p)?;
+            let on = !cfg.shared_history;
+            set_shared(p, &mut cfg, on)?;
         }
         "login" => {
             cfg.launch_at_login = !cfg.launch_at_login;
@@ -562,7 +555,8 @@ fn update_command(exe: &Path) -> Option<&'static str> {
     if path.contains(".app/Contents/MacOS/") {
         None
     } else if path.contains("/Cellar/") {
-        Some("brew upgrade cctwin")
+        // `brew upgrade` alone skips a tap that auto-updated recently and says "already installed".
+        Some("brew update && brew upgrade cctwin")
     } else if path.contains("/.cargo/bin/") {
         Some("cargo install cctwin")
     } else {
@@ -572,11 +566,44 @@ fn update_command(exe: &Path) -> Option<&'static str> {
     }
 }
 
+/// Turn Shared session history on or off for every account.
+fn set_shared(p: &Paths, cfg: &mut Config, on: bool) -> Result<()> {
+    cfg.shared_history = on;
+    for a in &cfg.accounts {
+        if on {
+            state::link_shared(p, &a.dir)?
+        } else {
+            state::unlink_shared(&a.dir)?
+        }
+    }
+    cfg.save(p)
+}
+
 fn continue_next(p: &Paths) -> Result<()> {
-    let cfg = Config::load(p)?;
+    let mut cfg = Config::load(p)?;
     let Some(next) = cfg.next_index(cfg.active_index(p)) else {
         bail!("Add another account to continue on it.");
     };
+    // Without shared history the next account has its own, so `claude --continue` won't find
+    // this conversation. Ask instead of sharing silently: work and personal history may not mix.
+    if !cfg.shared_history {
+        let body = "The next account can't see this conversation unless Shared session history is on. \
+            It shares conversation history, settings, CLAUDE.md, commands, agents, skills and plugins \
+            between your accounts. Logins stay separate.";
+        match mac::dialog(
+            "Share history to continue?",
+            body,
+            &["Turn on and continue", "Continue without it", "Cancel"],
+            None,
+            false,
+        )
+        .0
+        {
+            0 => set_shared(p, &mut cfg, true)?,
+            1 => {}
+            _ => return Ok(()),
+        }
+    }
     let a = next.map(|i| &cfg.accounts[i]);
     switch(p, a)?;
     let body = format!(
@@ -714,7 +741,7 @@ mod tests {
         );
         assert_eq!(
             update_command(p("/opt/homebrew/Cellar/cctwin/0.1.2/bin/cctwin")),
-            Some("brew upgrade cctwin")
+            Some("brew update && brew upgrade cctwin")
         );
         assert_eq!(
             update_command(p("/Users/x/.cargo/bin/cctwin")),
