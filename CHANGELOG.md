@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-10-19
+
+### Fixed
+
+- **Continue on next account** (`⌥⇧⌘C`) now cycles through Default too. With Default and one added account, it used to fail from the added account.
+- The shell hook loads even when your shell config has an alias named `claude` (for example `alias claude="claude --dangerously-skip-permissions"`); it used to fail silently, so switching had no effect in terminals.
+
 ## [0.1.3] - 2026-10-19
 
 ### Added
@@ -59,7 +66,8 @@ First release, macOS only.
 - CLI: `cctwin list`, `cctwin use <name>`, `cctwin init <shell>`.
 - Install with Homebrew, the install script, `cargo install`, or a `.dmg` with `cctwin.app` (universal, Apple Silicon and Intel).
 
-[Unreleased]: https://github.com/arifulislamat/cctwin/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/arifulislamat/cctwin/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/arifulislamat/cctwin/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/arifulislamat/cctwin/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/arifulislamat/cctwin/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/arifulislamat/cctwin/compare/v0.1.0...v0.1.1
