@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Account folders missing from the config (an interrupted Add, or a deleted `config.toml`) are added back instead of being logged out and deleted.
+- Turning Shared session history off and on more than once no longer stops linking an account; identical copies are dropped and backups are never overwritten (`.cctwin-bak`, `-2`, …).
+- A hotkey already taken by another app no longer stops the rest of startup; cctwin says which hotkey failed.
+- Removing the active account switches to Default before deleting the folder.
+- The active-account file is written atomically, so the shell hook never reads a half-written path.
+- Finding `claude` for logout checks the usual install paths before running your login shell.
+
 ## [0.1.1] - 2026-10-18
 
 ### Fixed

@@ -115,7 +115,7 @@ Logins (`.claude.json`, Keychain) are never shared. User-scope MCP servers are s
 ~/.cctwin/active          path of the active folder (empty = Default)
 ~/.cctwin/last_cwd        last folder `claude` ran in
 ~/.cctwin/accounts/<id>/  one Claude Code config folder per account
-~/.cctwin/cctwin.log      errors (when started at login)
+~/.cctwin/cctwin.log      errors from the background app
 ```
 
 `config.toml` options:

@@ -231,26 +231,10 @@ fn exe() -> Result<std::path::PathBuf> {
 }
 
 fn startup(p: &Paths, hotkeys: &GlobalHotKeyManager, proxy: &EventLoopProxy<Ev>) -> Result<()> {
-    let cfg = Config::load(p)?;
+    let mut cfg = Config::load(p)?;
     mac::setenv(state::active_dir(p).as_deref()); // launchctl env does not survive a reboot
-    // An Add cut short by quitting leaves a folder that is not in the config: log it out and delete it.
-    let orphans: Vec<_> = std::fs::read_dir(p.root.join("accounts"))
-        .into_iter()
-        .flatten()
-        .flatten()
-        .map(|e| e.path())
-        .filter(|d| !cfg.accounts.iter().any(|a| &a.dir == d))
-        .collect();
-    if !orphans.is_empty() {
-        bg(proxy, move |_| {
-            for dir in orphans {
-                if state::read_email(&dir.join(".claude.json")).is_some() {
-                    logout(&dir);
-                }
-                state::delete_account_dir(&dir)?;
-            }
-            Ok(())
-        });
+    if state::adopt_strays(p, &mut cfg)? {
+        cfg.save(p)?;
     }
     if cfg.shared_history {
         for a in &cfg.accounts {
@@ -260,9 +244,19 @@ fn startup(p: &Paths, hotkeys: &GlobalHotKeyManager, proxy: &EventLoopProxy<Ev>)
     if cfg.launch_at_login {
         mac::set_launch_at_login(true, &exe()?, &p.root.join("cctwin.log"))?;
     }
-    match cfg.hotkey_next.parse::<HotKey>() {
-        Ok(k) => hotkeys.register(k)?,
-        Err(e) => eprintln!("cctwin: bad hotkey_next {:?}: {e}", cfg.hotkey_next),
+    // A hotkey taken by another app must not stop the rest of startup.
+    let key = &cfg.hotkey_next;
+    match key.parse::<HotKey>() {
+        Ok(k) => {
+            if let Err(e) = hotkeys.register(k) {
+                report(Err(anyhow::anyhow!(
+                    "Hotkey {key} is unavailable ({e}). Change hotkey_next in ~/.cctwin/config.toml."
+                )));
+            }
+        }
+        Err(e) => report(Err(anyhow::anyhow!(
+            "Bad hotkey_next {key:?} in ~/.cctwin/config.toml: {e}"
+        ))),
     }
     if !cfg.notice_shown {
         bg(proxy, |p| {
@@ -533,11 +527,12 @@ fn remove(p: &Paths, acc: &Account) -> Result<()> {
     if !mac::confirm(&msg, "Remove") {
         return Ok(());
     }
-    logout(&acc.dir);
-    state::delete_account_dir(&acc.dir)?;
+    // Switch away first, so a `claude` started meanwhile can't recreate the folder.
     if state::active_dir(p).as_deref() == Some(acc.dir.as_path()) {
         switch(p, None)?;
     }
+    logout(&acc.dir);
+    state::delete_account_dir(&acc.dir)?;
     let mut cfg = Config::load(p)?;
     cfg.accounts.retain(|a| a.id != acc.id);
     cfg.save(p)?;

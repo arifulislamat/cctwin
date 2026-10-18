@@ -125,29 +125,30 @@ pub fn reveal(dir: &Path) {
     let _ = Command::new("open").arg(dir).status();
 }
 
-/// Absolute path of the `claude` CLI. GUI apps get launchd's bare PATH, so ask the login shell.
+/// Absolute path of the `claude` CLI. GUI apps get launchd's bare PATH, so check the usual install
+/// locations first and only then ask the user's login shell (slower, and runs their shell config).
 pub fn claude_bin() -> Option<PathBuf> {
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
-    let from_shell = Command::new(shell)
-        .args(["-ilc", "/usr/bin/which claude"])
-        .output()
-        .ok()
-        .and_then(|o| {
-            String::from_utf8_lossy(&o.stdout)
-                .lines()
-                .rev()
-                .find(|l| l.starts_with('/'))
-                .map(PathBuf::from)
-        });
     let home = std::env::home_dir()?;
-    from_shell
-        .into_iter()
-        .chain([
-            home.join(".local/bin/claude"),
-            "/opt/homebrew/bin/claude".into(),
-            "/usr/local/bin/claude".into(),
-        ])
-        .find(|p| p.is_file())
+    let known = [
+        home.join(".local/bin/claude"),
+        "/opt/homebrew/bin/claude".into(),
+        "/usr/local/bin/claude".into(),
+    ];
+    if let Some(p) = known.into_iter().find(|p| p.is_file()) {
+        return Some(p);
+    }
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
+    let out = Command::new(shell)
+        .args(["-ilc", "/usr/bin/which claude"])
+        .stdin(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .rev()
+        .find(|l| l.starts_with('/'))
+        .map(PathBuf::from)
+        .filter(|p| p.is_file())
 }
 
 fn agent_plist() -> PathBuf {

@@ -182,7 +182,10 @@ pub fn set_active(p: &Paths, dir: Option<&Path>) -> Result<()> {
     let s = dir
         .map(|d| d.to_string_lossy().into_owned())
         .unwrap_or_default();
-    fs::write(p.active_file(), s)?;
+    // Write then rename, so the shell hook never reads a half-written file.
+    let tmp = p.root.join("active.tmp");
+    fs::write(&tmp, s)?;
+    fs::rename(tmp, p.active_file())?;
     Ok(())
 }
 
@@ -225,8 +228,38 @@ pub fn delete_account_dir(dir: &Path) -> Result<()> {
     }
 }
 
-/// Point an account's shared items at ~/.claude. Existing projects are merged in first; other real
-/// items are moved aside to <item>.cctwin-bak. Items missing from ~/.claude are skipped (except projects).
+/// Account folders missing from the config: an Add cut short by quitting, or a reset config.
+/// Folders with a login or their own history are added back, so nothing is logged out or lost;
+/// empty ones are deleted. Returns true when the config changed.
+pub fn adopt_strays(p: &Paths, cfg: &mut Config) -> Result<bool> {
+    let Ok(entries) = fs::read_dir(p.root.join("accounts")) else {
+        return Ok(false);
+    };
+    let mut changed = false;
+    for dir in entries.flatten().map(|e| e.path()) {
+        if !dir.is_dir() || cfg.accounts.iter().any(|a| a.dir == dir) {
+            continue;
+        }
+        let projects = dir.join("projects");
+        let has_history = projects.is_dir() && !projects.is_symlink();
+        if read_email(&dir.join(".claude.json")).is_some() || has_history {
+            let id = dir.file_name().unwrap().to_string_lossy().into_owned();
+            cfg.accounts.push(Account {
+                id,
+                nickname: String::new(),
+                dir,
+            });
+            changed = true;
+        } else {
+            delete_account_dir(&dir)?;
+        }
+    }
+    Ok(changed)
+}
+
+/// Point an account's shared items at ~/.claude. Existing projects are merged in first; other
+/// items identical to ~/.claude's are dropped, different ones are kept as <item>.cctwin-bak.
+/// Items missing from ~/.claude are skipped (except projects).
 pub fn link_shared(p: &Paths, dir: &Path) -> Result<()> {
     mkdir_private(&p.claude_home.join("projects"))?;
     for item in SHARED {
@@ -236,19 +269,48 @@ pub fn link_shared(p: &Paths, dir: &Path) -> Result<()> {
             continue;
         }
         if link.exists() {
-            if item == "projects" && merge_into(&link, &target)? == 0 {
-                fs::remove_dir_all(&link)?;
-            } else {
-                let bak = dir.join(format!("{item}.cctwin-bak"));
-                if bak.exists() {
-                    continue; // never overwrite an earlier backup
+            let merged = item == "projects" && merge_into(&link, &target)? == 0;
+            if merged || same_tree(&link, &target) {
+                if link.is_dir() {
+                    fs::remove_dir_all(&link)?;
+                } else {
+                    fs::remove_file(&link)?;
                 }
-                fs::rename(&link, bak)?;
+            } else {
+                fs::rename(&link, backup_path(dir, item))?;
             }
         }
         symlink(&target, &link)?;
     }
     Ok(())
+}
+
+/// <item>.cctwin-bak, then -2, -3… so an earlier backup is never overwritten.
+fn backup_path(dir: &Path, item: &str) -> PathBuf {
+    (1..)
+        .map(|n| match n {
+            1 => dir.join(format!("{item}.cctwin-bak")),
+            n => dir.join(format!("{item}.cctwin-bak-{n}")),
+        })
+        .find(|b| !b.exists() && !b.is_symlink())
+        .unwrap()
+}
+
+/// Files or folders with identical contents.
+fn same_tree(a: &Path, b: &Path) -> bool {
+    Command::new("diff")
+        .arg("-rq")
+        .arg(a)
+        .arg(b)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
+fn same_file(a: &Path, b: &Path) -> bool {
+    let len = |p: &Path| fs::metadata(p).map(|m| m.len()).ok();
+    len(a).is_some() && len(a) == len(b) && fs::read(a).ok() == fs::read(b).ok()
 }
 
 /// Replace each shared symlink with a real copy of what it points at.
@@ -275,7 +337,8 @@ pub fn unlink_shared(dir: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Move files from src into dst, keeping dst's file on a name clash. Returns how many were left behind.
+/// Move files from src into dst. On a name clash an identical copy is dropped (e.g. history copied
+/// out when sharing was turned off) and a different one is left in src. Returns how many were left.
 fn merge_into(src: &Path, dst: &Path) -> Result<usize> {
     mkdir_private(dst)?;
     let mut left = 0;
@@ -285,7 +348,11 @@ fn merge_into(src: &Path, dst: &Path) -> Result<usize> {
         if entry.file_type()?.is_dir() {
             left += merge_into(&entry.path(), &to)?;
         } else if to.exists() {
-            left += 1;
+            if same_file(&entry.path(), &to) {
+                fs::remove_file(entry.path())?;
+            } else {
+                left += 1;
+            }
         } else {
             fs::rename(entry.path(), to)?;
         }
@@ -375,6 +442,68 @@ mod tests {
         assert!(c.validate_nickname("", None).is_err());
         assert!(c.validate_nickname(&"x".repeat(33), None).is_err());
         assert!(c.validate_nickname("Default", None).is_err());
+    }
+
+    #[test]
+    fn strays_are_adopted_or_deleted() {
+        let p = Paths::from_home(&tmp_home("strays"));
+        let mut cfg = Config::default();
+        let (id, known) = create_account_dir(&p).unwrap();
+        cfg.accounts.push(acc(&id, "Known", &known));
+        let (_, empty) = create_account_dir(&p).unwrap();
+        let (login_id, login) = create_account_dir(&p).unwrap();
+        fs::write(
+            login.join(".claude.json"),
+            r#"{"oauthAccount":{"emailAddress":"a@b.c"}}"#,
+        )
+        .unwrap();
+        let (_, history) = create_account_dir(&p).unwrap();
+        fs::create_dir_all(history.join("projects/x")).unwrap();
+
+        assert!(adopt_strays(&p, &mut cfg).unwrap());
+        assert!(!empty.exists()); // never logged in, nothing to keep
+        assert!(known.exists() && login.exists() && history.exists());
+        assert_eq!(cfg.accounts.len(), 3);
+        assert!(
+            cfg.accounts
+                .iter()
+                .any(|a| a.id == login_id && a.nickname.is_empty())
+        );
+        assert!(!adopt_strays(&p, &mut cfg).unwrap()); // nothing left to do
+    }
+
+    #[test]
+    fn shared_toggle_cycles_stay_linked() {
+        let p = Paths::from_home(&tmp_home("cycles"));
+        fs::create_dir_all(p.claude_home.join("projects/proj")).unwrap();
+        fs::write(p.claude_home.join("projects/proj/s.jsonl"), "history").unwrap();
+        fs::write(p.claude_home.join("settings.json"), "{}").unwrap();
+        let (_, dir) = create_account_dir(&p).unwrap();
+        for _ in 0..3 {
+            link_shared(&p, &dir).unwrap();
+            assert!(dir.join("projects").is_symlink() && dir.join("settings.json").is_symlink());
+            unlink_shared(&dir).unwrap(); // leaves identical copies behind
+        }
+        link_shared(&p, &dir).unwrap();
+        assert!(dir.join("projects").is_symlink());
+        assert!(!dir.join("projects.cctwin-bak").exists()); // identical copies were dropped, not backed up
+        assert!(!dir.join("settings.json.cctwin-bak").exists());
+
+        // A different settings.json is kept, and a second one does not overwrite the first backup.
+        for v in ["mine-1", "mine-2"] {
+            unlink_shared(&dir).unwrap();
+            fs::write(dir.join("settings.json"), v).unwrap();
+            link_shared(&p, &dir).unwrap();
+            assert!(dir.join("settings.json").is_symlink());
+        }
+        assert_eq!(
+            fs::read_to_string(dir.join("settings.json.cctwin-bak")).unwrap(),
+            "mine-1"
+        );
+        assert_eq!(
+            fs::read_to_string(dir.join("settings.json.cctwin-bak-2")).unwrap(),
+            "mine-2"
+        );
     }
 
     #[test]
