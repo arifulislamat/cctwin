@@ -1,6 +1,6 @@
 [package]
 name = "cctwin"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2024"
 description = "Menu bar app to switch Claude Code between Claude accounts you own"
 license = "MIT"
@@ -17,12 +17,12 @@ anyhow = "1.0.104"
 dispatch2 = "0.3"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = [
-    "std", "NSAlert", "NSApplication", "NSButton", "NSButtonCell", "NSCell", "NSControl",
+    "std", "NSAlert", "NSApplication", "NSAttributedString", "NSParagraphStyle", "NSButton", "NSButtonCell", "NSCell", "NSControl",
     "NSColor", "NSFont", "NSGraphics", "NSImage", "NSImageView", "NSResponder",
     "NSRunningApplication", "NSText", "NSTextField", "NSView", "NSWindow",
 ] }
 objc2-foundation = { version = "0.3", default-features = false, features = [
-    "std", "NSData", "NSGeometry", "NSObject", "NSString",
+    "std", "NSAttributedString", "NSData", "NSDictionary", "NSGeometry", "NSObject", "NSString", "NSURL",
 ] }
 global-hotkey = "0.9"
 serde = { version = "1.0.229", features = ["derive"] }

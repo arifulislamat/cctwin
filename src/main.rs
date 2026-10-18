@@ -477,32 +477,12 @@ fn on_menu(p: &Paths, proxy: &EventLoopProxy<Ev>, id: &str) -> Result<()> {
         }
         "hook" => install_hook(false)?,
         "welcome" => welcome::show(main_thread(), p),
-        "about" => bg(proxy, |_| {
-            about();
-            Ok(())
-        }),
+        "about" => mac::about_panel(VERSION, REPO),
         "update" => bg(proxy, |_| check_for_updates()),
         "quit" => std::process::exit(0),
         _ => {}
     }
     Ok(())
-}
-
-fn about() {
-    let body = "Switch Claude Code between Claude accounts you own.\n\nOpen source under the MIT license: github.com/arifulislamat/cctwin\n\nNot affiliated with Anthropic.";
-    match mac::dialog(
-        &format!("cctwin {VERSION}"),
-        body,
-        &["OK", "GitHub", "Report a problem"],
-        None,
-        false,
-    )
-    .0
-    {
-        1 => mac::reveal(REPO),
-        2 => mac::reveal(format!("{REPO}/issues/new/choose")),
-        _ => {}
-    }
 }
 
 /// Only runs when the user asks: cctwin makes no network calls on its own.

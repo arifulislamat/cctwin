@@ -1,9 +1,19 @@
 // macOS glue: native dialogs, launchctl env, Terminal and IDE launching, LaunchAgent.
 use anyhow::{Result, bail};
 use dispatch2::run_on_main;
+use objc2::runtime::AnyObject;
 use objc2::{AllocAnyThread, MainThreadMarker};
-use objc2_app_kit::{NSAlert, NSAlertFirstButtonReturn, NSApplication, NSImage, NSTextField};
-use objc2_foundation::{NSData, NSPoint, NSRect, NSSize, NSString};
+use objc2_app_kit::{
+    NSAboutPanelOptionApplicationIcon, NSAboutPanelOptionApplicationName,
+    NSAboutPanelOptionApplicationVersion, NSAboutPanelOptionCredits, NSAboutPanelOptionVersion,
+    NSAlert, NSAlertFirstButtonReturn, NSApplication, NSColor, NSFont, NSFontAttributeName,
+    NSForegroundColorAttributeName, NSImage, NSLinkAttributeName, NSMutableParagraphStyle,
+    NSParagraphStyleAttributeName, NSTextAlignment, NSTextField,
+};
+use objc2_foundation::{
+    NSAttributedString, NSData, NSDictionary, NSMutableAttributedString, NSPoint, NSRect, NSSize,
+    NSString, NSURL,
+};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -85,6 +95,80 @@ pub fn dialog(
             text.map(|t| t.stringValue().to_string())
                 .unwrap_or_default(),
         )
+    })
+}
+
+/// Apple's standard About panel: centered icon, name and version, then a credits block with links.
+pub fn about_panel(version: &str, repo: &str) {
+    let (version, repo) = (version.to_string(), repo.to_string());
+    run_on_main(move |mtm| {
+        let center = NSMutableParagraphStyle::new();
+        center.setAlignment(NSTextAlignment::Center);
+        let credits = NSMutableAttributedString::new();
+        let add = |text: &str, link: Option<String>| {
+            let font = NSFont::systemFontOfSize(11.);
+            let color = if link.is_some() {
+                NSColor::linkColor()
+            } else {
+                NSColor::secondaryLabelColor()
+            };
+            let url = link.and_then(|l| NSURL::URLWithString(&NSString::from_str(&l)));
+            let mut keys = unsafe {
+                vec![
+                    NSFontAttributeName,
+                    NSForegroundColorAttributeName,
+                    NSParagraphStyleAttributeName,
+                ]
+            };
+            let mut values: Vec<&AnyObject> = vec![&font, &color, &center];
+            if let Some(url) = &url {
+                keys.push(unsafe { NSLinkAttributeName });
+                values.push(url);
+            }
+            let attrs = NSDictionary::from_slices(&keys, &values);
+            let piece = unsafe {
+                NSAttributedString::initWithString_attributes(
+                    NSAttributedString::alloc(),
+                    &NSString::from_str(text),
+                    Some(&attrs),
+                )
+            };
+            credits.appendAttributedString(&piece);
+        };
+        add(
+            "Switch Claude Code between Claude accounts.\n\n",
+            None,
+        );
+        add("GitHub", Some(repo.clone()));
+        add("    ·    ", None);
+        add(
+            "Report a problem",
+            Some(format!("{repo}/issues/new/choose")),
+        );
+        add("\n\nMIT License · Not affiliated with Anthropic", None);
+
+        let app = NSApplication::sharedApplication(mtm);
+        let name = NSString::from_str("cctwin");
+        let version = NSString::from_str(&version);
+        let build = NSString::from_str(""); // hides the "(build)" suffix
+        let icon = app.applicationIconImage();
+        let mut keys = unsafe {
+            vec![
+                NSAboutPanelOptionApplicationName,
+                NSAboutPanelOptionApplicationVersion,
+                NSAboutPanelOptionVersion,
+                NSAboutPanelOptionCredits,
+            ]
+        };
+        let mut values: Vec<&AnyObject> = vec![&name, &version, &build, &credits];
+        if let Some(icon) = &icon {
+            keys.push(unsafe { NSAboutPanelOptionApplicationIcon });
+            values.push(icon);
+        }
+        activate(mtm);
+        unsafe {
+            app.orderFrontStandardAboutPanelWithOptions(&NSDictionary::from_slices(&keys, &values))
+        };
     })
 }
 
