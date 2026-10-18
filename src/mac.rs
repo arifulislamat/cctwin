@@ -50,14 +50,14 @@ pub fn activate(mtm: MainThreadMarker) {
 }
 
 /// Native dialog with the cctwin icon, run on the main thread from any thread. The first button is
-/// the default. Returns whether it was pressed and the text field's contents (when `field` is set).
-fn dialog(
+/// the default. Returns the index of the pressed button and the text field's contents (when `field` is set).
+pub fn dialog(
     title: &str,
     body: &str,
     buttons: &[&str],
     field: Option<&str>,
     destructive: bool,
-) -> (bool, String) {
+) -> (usize, String) {
     let (title, body, field) = (title.to_string(), body.to_string(), field.map(String::from));
     let buttons: Vec<String> = buttons.iter().map(|b| b.to_string()).collect();
     run_on_main(move |mtm| {
@@ -76,9 +76,9 @@ fn dialog(
             text
         });
         activate(mtm);
-        let ok = alert.runModal() == NSAlertFirstButtonReturn;
+        let pressed = (alert.runModal() - NSAlertFirstButtonReturn).max(0) as usize;
         (
-            ok,
+            pressed,
             text.map(|t| t.stringValue().to_string())
                 .unwrap_or_default(),
         )
@@ -96,12 +96,12 @@ pub fn tell(title: &str, body: &str) {
 }
 
 pub fn confirm(title: &str, body: &str, ok: &str, destructive: bool) -> bool {
-    dialog(title, body, &[ok, "Cancel"], None, destructive).0
+    dialog(title, body, &[ok, "Cancel"], None, destructive).0 == 0
 }
 
 pub fn input(title: &str, body: &str, default: &str) -> Option<String> {
-    let (ok, text) = dialog(title, body, &["Save", "Cancel"], Some(default), false);
-    ok.then_some(text)
+    let (pressed, text) = dialog(title, body, &["Save", "Cancel"], Some(default), false);
+    (pressed == 0).then_some(text)
 }
 
 /// Set CLAUDE_CONFIG_DIR for GUI apps launched from now on; None unsets it (Default account).
@@ -166,8 +166,20 @@ pub fn open_ide(app: &str, dir: Option<&Path>, cwd: &Path) -> Result<()> {
     Ok(())
 }
 
-pub fn reveal(dir: &Path) {
-    let _ = Command::new("open").arg(dir).status();
+/// Open a folder in Finder or a URL in the browser.
+pub fn reveal(target: impl AsRef<std::ffi::OsStr>) {
+    let _ = Command::new("open").arg(target).status();
+}
+
+pub fn copy_to_clipboard(text: &str) {
+    use std::io::Write;
+    if let Ok(mut child) = Command::new("pbcopy")
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+    {
+        let _ = child.stdin.take().map(|mut i| i.write_all(text.as_bytes()));
+        let _ = child.wait();
+    }
 }
 
 /// Absolute path of the `claude` CLI. GUI apps get launchd's bare PATH, so check the usual install

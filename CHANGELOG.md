@@ -11,6 +11,7 @@ All notable changes to this project are documented here. The format follows
 - Welcome window on first run: terms, shell hook, first account and launch at login as a checklist. Reopen it from the menu with **Welcome & setup…**.
 - Native macOS dialogs with the cctwin icon for adding, renaming and removing accounts (replacing AppleScript popups).
 - Styled `.dmg`: drag-to-Applications window with a background, arrow and volume icon.
+- **About cctwin** (version, license, GitHub, report a problem) and **Check for updates…** in the menu. The update check only runs when clicked and tells you the update command for how you installed cctwin.
 
 ## [0.1.2] - 2026-10-18
 

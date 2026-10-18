@@ -22,6 +22,9 @@ use tao::platform::macos::{ActivationPolicy, EventLoopExtMacOS};
 use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
 use tray_icon::{TrayIcon, TrayIconBuilder};
 
+const REPO: &str = "https://github.com/arifulislamat/cctwin";
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 const USAGE: &str = "usage: cctwin                  start the menu bar app in the background
        cctwin --foreground     run the menu bar app attached to this terminal
        cctwin list             list accounts (* = active)
@@ -45,7 +48,7 @@ fn main() {
         ["use", name] => cli_use(name),
         ["init", shell] => hook::script(shell).map(|s| print!("{s}")),
         ["--version" | "-V"] => {
-            println!("cctwin {}", env!("CARGO_PKG_VERSION"));
+            println!("cctwin {VERSION}");
             Ok(())
         }
         _ => {
@@ -294,6 +297,7 @@ fn on_welcome(p: &Paths, proxy: &EventLoopProxy<Ev>, action: &str) -> Result<()>
         }
         "hook" => install_hook(true)?,
         "done" => welcome::close(),
+        "github" => mac::reveal(REPO),
         other => on_menu(p, proxy, other)?, // "add", "login"
     }
     Ok(())
@@ -393,6 +397,8 @@ fn refresh(p: &Paths, tray: &TrayIcon) -> Result<()> {
         &CheckMenuItem::with_id("login", "Launch at login", true, cfg.launch_at_login, None),
         &MenuItem::with_id("hook", "Install shell hook", true, None),
         &MenuItem::with_id("welcome", "Welcome & setup…", true, None),
+        &MenuItem::with_id("about", format!("About cctwin {VERSION}"), true, None),
+        &MenuItem::with_id("update", "Check for updates…", true, None),
         &MenuItem::with_id("quit", "Quit cctwin", true, None),
     ])?;
     tray.set_menu(Some(Box::new(menu)));
@@ -471,10 +477,119 @@ fn on_menu(p: &Paths, proxy: &EventLoopProxy<Ev>, id: &str) -> Result<()> {
         }
         "hook" => install_hook(false)?,
         "welcome" => welcome::show(main_thread(), p),
+        "about" => bg(proxy, |_| {
+            about();
+            Ok(())
+        }),
+        "update" => bg(proxy, |_| check_for_updates()),
         "quit" => std::process::exit(0),
         _ => {}
     }
     Ok(())
+}
+
+fn about() {
+    let body = "Switch Claude Code between Claude accounts you own.\n\nOpen source under the MIT license: github.com/arifulislamat/cctwin\n\nNot affiliated with Anthropic.";
+    match mac::dialog(
+        &format!("cctwin {VERSION}"),
+        body,
+        &["OK", "GitHub", "Report a problem"],
+        None,
+        false,
+    )
+    .0
+    {
+        1 => mac::reveal(REPO),
+        2 => mac::reveal(format!("{REPO}/issues/new/choose")),
+        _ => {}
+    }
+}
+
+/// Only runs when the user asks: cctwin makes no network calls on its own.
+fn check_for_updates() -> Result<()> {
+    // /releases/latest redirects to /releases/tag/v<version>; no API token or JSON needed.
+    let out = Command::new("curl")
+        .args([
+            "-fsSLI",
+            "-m",
+            "15",
+            "-o",
+            "/dev/null",
+            "-w",
+            "%{url_effective}",
+        ])
+        .arg(format!("{REPO}/releases/latest"))
+        .output()?;
+    let url = String::from_utf8_lossy(&out.stdout).into_owned();
+    let Some(latest) = url.rsplit_once("/tag/v").map(|(_, v)| v.trim().to_string()) else {
+        bail!("Couldn't reach GitHub to check for updates. Check your connection and try again.");
+    };
+    if !newer(&latest, VERSION) {
+        mac::alert(
+            "You're up to date",
+            &format!("cctwin {VERSION} is the latest version."),
+        );
+        return Ok(());
+    }
+    let title = format!("cctwin {latest} is available");
+    let notes = format!("{REPO}/releases/tag/v{latest}");
+    match update_command(&exe()?) {
+        Some(cmd) => {
+            let body = format!("You have {VERSION}. To update, run:\n\n{cmd}");
+            match mac::dialog(
+                &title,
+                &body,
+                &["Copy command", "What's new", "Later"],
+                None,
+                false,
+            )
+            .0
+            {
+                0 => mac::copy_to_clipboard(cmd),
+                1 => mac::reveal(&notes),
+                _ => {}
+            }
+        }
+        None => {
+            let body = format!(
+                "You have {VERSION}. Download the new .dmg and drag cctwin to Applications again."
+            );
+            if mac::dialog(&title, &body, &["Download", "Later"], None, false).0 == 0 {
+                mac::reveal(&notes);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Whether version `a` is newer than `b` (numeric x.y.z; pre-release suffixes are ignored).
+fn newer(a: &str, b: &str) -> bool {
+    let parse = |v: &str| -> Vec<u64> {
+        v.split(['-', '+'])
+            .next()
+            .unwrap_or_default()
+            .split('.')
+            .map(|n| n.parse().unwrap_or(0))
+            .collect()
+    };
+    parse(a) > parse(b)
+}
+
+/// How this copy was installed, judged by where it runs from. None means the .dmg app.
+fn update_command(exe: &Path) -> Option<&'static str> {
+    let path = std::fs::canonicalize(exe).unwrap_or_else(|_| exe.to_path_buf());
+    let path = path.to_string_lossy();
+    if path.contains(".app/Contents/MacOS/") {
+        None
+    } else if path.contains("/Cellar/") {
+        Some("brew upgrade cctwin")
+    } else if path.contains("/.cargo/bin/") {
+        Some("cargo install cctwin")
+    } else {
+        Some(
+            "curl -fsSL https://raw.githubusercontent.com/arifulislamat/cctwin/main/install.sh | sh",
+        )
+    }
 }
 
 fn continue_next(p: &Paths) -> Result<()> {
@@ -588,5 +703,41 @@ fn logout(dir: &Path) {
     {
         Ok(s) if s.success() => {}
         r => eprintln!("cctwin: logout for {} failed: {r:?}", dir.display()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn version_compare() {
+        assert!(newer("0.1.10", "0.1.9")); // numeric, not text
+        assert!(newer("1.0.0", "0.9.9"));
+        assert!(!newer("0.1.2", "0.1.2"));
+        assert!(!newer("0.1.1", "0.1.2"));
+        assert!(!newer("0.2.0-rc.1", "0.2.0"));
+    }
+
+    #[test]
+    fn install_method() {
+        let p = Path::new;
+        assert_eq!(
+            update_command(p("/Applications/cctwin.app/Contents/MacOS/cctwin")),
+            None
+        );
+        assert_eq!(
+            update_command(p("/opt/homebrew/Cellar/cctwin/0.1.2/bin/cctwin")),
+            Some("brew upgrade cctwin")
+        );
+        assert_eq!(
+            update_command(p("/Users/x/.cargo/bin/cctwin")),
+            Some("cargo install cctwin")
+        );
+        assert!(
+            update_command(p("/Users/x/.local/bin/cctwin"))
+                .unwrap()
+                .contains("install.sh")
+        );
     }
 }

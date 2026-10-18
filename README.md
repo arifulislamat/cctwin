@@ -89,6 +89,8 @@ Each account is its own Claude Code config folder in `~/.cctwin/accounts/<id>`. 
 - **Terminals.** The shell hook wraps `claude` so it reads `~/.cctwin/active` on every run and sets `CLAUDE_CONFIG_DIR` (or clears it for Default).
 - **GUI apps.** `launchctl setenv CLAUDE_CONFIG_DIR` applies to apps opened after the switch. An IDE that is already running keeps its old account, and cctwin warns you about that.
 
+cctwin makes no network calls on its own. The only one is **Check for updates…**, when you click it: it asks GitHub for the latest release and tells you how to update (`brew upgrade cctwin`, a new `.dmg`, and so on).
+
 The login for each account stays where Claude Code puts it: the macOS Keychain, scoped per folder. cctwin never reads, copies or sends tokens. The only file it reads inside an account folder is `.claude.json`, and only to show the email.
 
 ### Shell hook

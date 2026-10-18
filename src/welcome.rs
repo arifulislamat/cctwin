@@ -12,7 +12,7 @@ use objc2_foundation::{NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSSt
 use std::cell::RefCell;
 
 const W: f64 = 480.;
-const H: f64 = 600.;
+const H: f64 = 620.;
 
 define_class!(
     // SAFETY: NSObject has no subclassing requirements and Target has no Drop.
@@ -38,6 +38,10 @@ define_class!(
         #[unsafe(method(login:))]
         fn login(&self, _sender: &AnyObject) {
             crate::welcome_action("login");
+        }
+        #[unsafe(method(github:))]
+        fn github(&self, _sender: &AnyObject) {
+            crate::welcome_action("github");
         }
         #[unsafe(method(done:))]
         fn done(&self, _sender: &AnyObject) {
@@ -230,6 +234,10 @@ pub fn show(mtm: MainThreadMarker, p: &Paths) {
     let done = button(mtm, "Done", &target, sel!(done:));
     done.setKeyEquivalent(&NSString::from_str("\r"));
     place(&view, &done, 336., 536., 112., 32.);
+    let link = button(mtm, "Open source on GitHub ↗", &target, sel!(github:));
+    link.setBordered(false);
+    link.setFont(Some(&small));
+    place(&view, &link, 30., 584., 200., 20.);
 
     window.center();
     window.makeKeyAndOrderFront(None);
