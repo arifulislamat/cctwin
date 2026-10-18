@@ -27,7 +27,13 @@ or from source with `cargo install cctwin`.
 
 Download `cctwin-<version>.dmg` from the [latest release](https://github.com/arifulislamat/cctwin/releases/latest), open it and drag **cctwin** to **Applications**.
 
-The app is not notarized by Apple yet, so the first launch is blocked. Open it once, click **Done**, then go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to "cctwin was blocked". After that it opens normally. Homebrew and the install script skip this step.
+The app is not notarized by Apple yet, so macOS blocks the first launch with "Apple could not verify cctwin is free of malware". Clear the download flag once, then open it:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/cctwin.app && open /Applications/cctwin.app
+```
+
+(Or try to open it, then go to **System Settings → Privacy & Security** and click **Open Anyway**, if your macOS version shows the button.) Homebrew and the install script skip this step entirely.
 
 To use the command line from the app version: `ln -s /Applications/cctwin.app/Contents/MacOS/cctwin ~/.local/bin/cctwin`.
 
@@ -148,4 +154,4 @@ Every release archive has a `.sha256` file and a [build provenance attestation](
 gh attestation verify cctwin-0.1.0.dmg --repo arifulislamat/cctwin
 ```
 
-The app is ad-hoc signed but not notarized yet. Installs through Homebrew, the install script and `cargo install` are not quarantined by macOS, so they run as is; the `.dmg` needs the one-time **Open Anyway** step above.
+The app is ad-hoc signed but not notarized yet. Installs through Homebrew, the install script and `cargo install` are not quarantined by macOS, so they run as is; the `.dmg` needs the one-time step above.
