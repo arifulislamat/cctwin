@@ -21,8 +21,9 @@ func render(scale: CGFloat, to path: String) {
     sand.setFill()
     NSRect(origin: .zero, size: size).fill()
 
-    // Dashed arrow between the icons (Finder places them at y = 190 from the top).
-    let y = size.height - 190
+    // Dashed arrow between the icons (Finder places them at y = 150 from the top). Everything stays in
+    // the top ~320pt: Finder's title bar and (on some macOS versions) status bar cover the rest.
+    let y = size.height - 150
     let line = NSBezierPath()
     line.move(to: NSPoint(x: 262, y: y))
     line.line(to: NSPoint(x: 386, y: y))
@@ -48,9 +49,9 @@ func render(scale: CGFloat, to path: String) {
     let note: [NSAttributedString.Key: Any] = [
         .font: NSFont.systemFont(ofSize: 12), .foregroundColor: ink.withAlphaComponent(0.6), .paragraphStyle: center,
     ]
-    ("Drag cctwin to Applications" as NSString).draw(in: NSRect(x: 0, y: 72, width: size.width, height: 28), withAttributes: title)
+    ("Drag cctwin to Applications" as NSString).draw(in: NSRect(x: 0, y: 110, width: size.width, height: 28), withAttributes: title)
     ("Then open it from Applications. It lives in the menu bar." as NSString)
-        .draw(in: NSRect(x: 0, y: 48, width: size.width, height: 20), withAttributes: note)
+        .draw(in: NSRect(x: 0, y: 88, width: size.width, height: 20), withAttributes: note)
 
     NSGraphicsContext.restoreGraphicsState()
     try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: path))
