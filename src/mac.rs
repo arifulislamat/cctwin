@@ -135,10 +135,7 @@ pub fn about_panel(version: &str, repo: &str) {
             };
             credits.appendAttributedString(&piece);
         };
-        add(
-            "Switch Claude Code between Claude accounts.\n\n",
-            None,
-        );
+        add("Switch Claude Code between Claude accounts.\n\n", None);
         add("GitHub", Some(repo.clone()));
         add("    ·    ", None);
         add(
