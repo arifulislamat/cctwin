@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-10-19
+
+### Changed
+
+- **Add account…** explains how to sign in on another device: paste the code and press Return. `claude auth login` hides the pasted code, so it looked like pasting failed.
+
 ## [0.1.4] - 2026-10-19
 
 ### Fixed
@@ -66,7 +72,8 @@ First release, macOS only.
 - CLI: `cctwin list`, `cctwin use <name>`, `cctwin init <shell>`.
 - Install with Homebrew, the install script, `cargo install`, or a `.dmg` with `cctwin.app` (universal, Apple Silicon and Intel).
 
-[Unreleased]: https://github.com/arifulislamat/cctwin/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/arifulislamat/cctwin/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/arifulislamat/cctwin/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/arifulislamat/cctwin/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/arifulislamat/cctwin/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/arifulislamat/cctwin/compare/v0.1.1...v0.1.2
