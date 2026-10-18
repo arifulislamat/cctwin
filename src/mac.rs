@@ -62,6 +62,9 @@ pub fn dialog(
     let buttons: Vec<String> = buttons.iter().map(|b| b.to_string()).collect();
     run_on_main(move |mtm| {
         let alert = NSAlert::new(mtm);
+        // Set explicitly: newer macOS shows the executable's icon (a folder for a bare binary) otherwise.
+        let icon = NSApplication::sharedApplication(mtm).applicationIconImage();
+        unsafe { alert.setIcon(icon.as_deref()) };
         alert.setMessageText(&NSString::from_str(&title));
         alert.setInformativeText(&NSString::from_str(&body));
         for (i, b) in buttons.iter().enumerate() {
