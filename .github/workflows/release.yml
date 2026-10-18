@@ -1,0 +1,160 @@
+name: Release
+
+# Tag-triggered only: v0.2.0 -> GitHub release, crates.io, Homebrew tap, then an install check.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-latest
+    permissions:
+      contents: write # create the release
+      id-token: write # build provenance
+      attestations: write
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+      sha256: ${{ steps.package.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Parse tag
+        id: tag
+        run: |
+          # The version ends up in shell commands and URLs; refuse anything but a plain tag.
+          [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] \
+            || { echo "unexpected tag name: $GITHUB_REF_NAME"; exit 1; }
+          VERSION="${GITHUB_REF_NAME#v}"
+          grep -q "^version = \"$VERSION\"$" Cargo.toml \
+            || { echo "Cargo.toml version does not match the tag"; exit 1; }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+      - run: cargo test --locked
+      - name: Build universal binary
+        run: |
+          cargo build --locked --release --target aarch64-apple-darwin
+          cargo build --locked --release --target x86_64-apple-darwin
+          lipo -create -output cctwin \
+            target/aarch64-apple-darwin/release/cctwin target/x86_64-apple-darwin/release/cctwin
+          lipo -info cctwin
+      - name: Package
+        id: package
+        run: |
+          ARCHIVE="cctwin-${{ steps.tag.outputs.version }}-universal-apple-darwin.tar.gz"
+          tar -czf "$ARCHIVE" cctwin README.md LICENSE
+          shasum -a 256 "$ARCHIVE" > "$ARCHIVE.sha256"
+          echo "archive=$ARCHIVE" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(cut -d' ' -f1 "$ARCHIVE.sha256")" >> "$GITHUB_OUTPUT"
+      # Signed record of which commit and workflow built the archive: `gh attestation verify`.
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: ${{ steps.package.outputs.archive }}
+      - name: GitHub release
+        run: |
+          gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes \
+            "${{ steps.package.outputs.archive }}" "${{ steps.package.outputs.archive }}.sha256"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  crates-io:
+    needs: build
+    # macOS-only crate: `cargo publish` builds it before uploading.
+    runs-on: macos-latest
+    environment: crates-io
+    permissions:
+      id-token: write # trusted publishing, no long-lived token
+    steps:
+      - name: Already published?
+        id: check
+        # The first version is published by hand (trusted publishing needs an existing crate).
+        run: |
+          if curl -fsS -A "cctwin-release (github.com/arifulislamat/cctwin)" \
+            "https://crates.io/api/v1/crates/cctwin/${{ needs.build.outputs.version }}" >/dev/null; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v7
+        if: steps.check.outputs.skip != 'true'
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.check.outputs.skip != 'true'
+      - uses: rust-lang/crates-io-auth-action@v1
+        if: steps.check.outputs.skip != 'true'
+        id: auth
+      - run: cargo publish --locked
+        if: steps.check.outputs.skip != 'true'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+
+  homebrew:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: arifulislamat/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+      - name: Update formula
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+          SHA256: ${{ needs.build.outputs.sha256 }}
+        run: |
+          mkdir -p Formula
+          cat > Formula/cctwin.rb <<EOF
+          class Cctwin < Formula
+            desc "Menu bar app to switch Claude Code between Claude accounts you own"
+            homepage "https://github.com/arifulislamat/cctwin"
+            url "https://github.com/arifulislamat/cctwin/releases/download/v${VERSION}/cctwin-${VERSION}-universal-apple-darwin.tar.gz"
+            sha256 "${SHA256}"
+            license "MIT"
+
+            depends_on :macos
+
+            def install
+              bin.install "cctwin"
+            end
+
+            def caveats
+              <<~EOS
+                Start the menu bar app with:
+                  cctwin
+                Then tick "Launch at login" in its menu.
+              EOS
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/cctwin --version")
+            end
+          end
+          EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/cctwin.rb
+          git commit -m "cctwin ${VERSION}"
+          git push
+
+  # Install the published release the way users do, on a clean runner.
+  verify:
+    needs: [build, homebrew]
+    runs-on: macos-latest
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: curl installer
+        run: |
+          CCTWIN_VERSION="$VERSION" sh install.sh
+          ~/.local/bin/cctwin --version | grep -qx "cctwin $VERSION"
+      - name: Homebrew
+        run: |
+          brew install arifulislamat/tap/cctwin
+          "$(brew --prefix)/bin/cctwin" --version | grep -qx "cctwin $VERSION"
+      - name: Provenance
+        run: |
+          gh release download "$GITHUB_REF_NAME" --pattern '*.tar.gz'
+          gh attestation verify cctwin-*.tar.gz --repo "$GITHUB_REPOSITORY"
+        env:
+          GH_TOKEN: ${{ github.token }}

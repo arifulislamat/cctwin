@@ -1,0 +1,35 @@
+name: Bug report
+description: Something doesn't work as documented
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: cctwin version
+      placeholder: "cctwin --version"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: macOS, Claude Code version and shell
+      placeholder: "macOS 26.2, Claude Code 2.1.302 (claude --version), zsh"
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Include relevant lines from ~/.cctwin/cctwin.log if any. Replace email addresses if you prefer.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs actual behavior
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: >
+        **Security issues: do NOT file here.** Use private vulnerability reporting, see SECURITY.md.
