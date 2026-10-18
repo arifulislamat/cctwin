@@ -9,6 +9,8 @@ A small menu bar app that switches [Claude Code](https://docs.claude.com/en/docs
 
 Run two accounts side by side in different terminals, or pick up the same conversation on another account when one hits its usage limit. macOS only (Apple Silicon and Intel).
 
+![cctwin: install, add an account, continue on another account when one hits its limit](docs/demo.gif)
+
 ## Install
 
 ```sh
