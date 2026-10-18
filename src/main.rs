@@ -1,7 +1,6 @@
 #[cfg(not(target_os = "macos"))]
 compile_error!("cctwin supports macOS only for now: https://github.com/arifulislamat/cctwin");
 
-
 mod hook;
 mod mac;
 mod state;
