@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-10-19
+
+### Changed
+
+- **Continue on next account** (`⌥⇧⌘C`) asks to turn on Shared session history when it's off, instead of opening a `claude --continue` that can't find the conversation.
+
+### Fixed
+
+- **Check for updates…** tells Homebrew users to run `brew update && brew upgrade cctwin`. `brew upgrade` alone could report "already installed" when the tap had auto-updated recently.
+
 ## [0.1.5] - 2026-10-19
 
 ### Changed
@@ -72,7 +82,8 @@ First release, macOS only.
 - CLI: `cctwin list`, `cctwin use <name>`, `cctwin init <shell>`.
 - Install with Homebrew, the install script, `cargo install`, or a `.dmg` with `cctwin.app` (universal, Apple Silicon and Intel).
 
-[Unreleased]: https://github.com/arifulislamat/cctwin/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/arifulislamat/cctwin/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/arifulislamat/cctwin/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/arifulislamat/cctwin/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/arifulislamat/cctwin/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/arifulislamat/cctwin/compare/v0.1.2...v0.1.3
