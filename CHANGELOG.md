@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-18
+
+### Fixed
+
+- Building on Linux or Windows now stops with a clear "macOS only" message instead of a missing-API error.
+
+### Changed
+
+- Releases publish to crates.io with trusted publishing and push the Homebrew formula from a tag-only environment.
+- README: the `.dmg` instructions use `xattr` to clear the download flag.
+
 ## [0.1.0] - 2026-10-18
 
 First release, macOS only.
@@ -23,5 +34,6 @@ First release, macOS only.
 - CLI: `cctwin list`, `cctwin use <name>`, `cctwin init <shell>`.
 - Install with Homebrew, the install script, `cargo install`, or a `.dmg` with `cctwin.app` (universal, Apple Silicon and Intel).
 
-[Unreleased]: https://github.com/arifulislamat/cctwin/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/arifulislamat/cctwin/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/arifulislamat/cctwin/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/arifulislamat/cctwin/releases/tag/v0.1.0
