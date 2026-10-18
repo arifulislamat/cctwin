@@ -35,7 +35,11 @@ xattr -dr com.apple.quarantine /Applications/cctwin.app && open /Applications/cc
 
 (Or try to open it, then go to **System Settings → Privacy & Security** and click **Open Anyway**, if your macOS version shows the button.) Homebrew and the install script skip this step entirely.
 
-To use the command line from the app version: `ln -s /Applications/cctwin.app/Contents/MacOS/cctwin ~/.local/bin/cctwin`.
+To use the command line from the app version:
+
+```sh
+ln -s /Applications/cctwin.app/Contents/MacOS/cctwin ~/.local/bin/cctwin
+```
 
 Then start it:
 
