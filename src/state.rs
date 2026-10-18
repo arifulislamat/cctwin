@@ -115,13 +115,17 @@ impl Config {
         self.accounts.iter().position(|a| a.dir == dir)
     }
 
-    /// Next account after `current` in menu order, skipping Default. None when there is no other account.
-    pub fn next_index(&self, current: Option<usize>) -> Option<usize> {
+    /// Next account after `current` in menu order (None = Default), wrapping from the last account
+    /// back to Default. Some(None) means Default; None when there is no other account.
+    pub fn next_index(&self, current: Option<usize>) -> Option<Option<usize>> {
         if self.accounts.is_empty() {
             return None;
         }
-        let next = current.map_or(0, |i| (i + 1) % self.accounts.len());
-        (Some(next) != current).then_some(next)
+        Some(match current {
+            None => Some(0),
+            Some(i) if i + 1 < self.accounts.len() => Some(i + 1),
+            Some(_) => None,
+        })
     }
 
     /// Trimmed nickname if it is 1..=32 chars and not used by another account.
@@ -424,12 +428,13 @@ mod tests {
         ];
         set_active(&p, Some(Path::new("/b"))).unwrap();
         assert_eq!(c.active_index(&p), Some(1));
-        assert_eq!(c.next_index(Some(1)), Some(0));
-        assert_eq!(c.next_index(None), Some(0)); // from Default
+        assert_eq!(c.next_index(None), Some(Some(0))); // Default -> first account
+        assert_eq!(c.next_index(Some(0)), Some(Some(1)));
+        assert_eq!(c.next_index(Some(1)), Some(None)); // last account wraps to Default
         set_active(&p, None).unwrap();
         assert_eq!(active_dir(&p), None);
         c.accounts.truncate(1);
-        assert_eq!(c.next_index(Some(0)), None); // nothing else to move to
+        assert_eq!(c.next_index(Some(0)), Some(None)); // Default + one account: back and forth
     }
 
     #[test]

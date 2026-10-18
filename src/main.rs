@@ -574,12 +574,15 @@ fn update_command(exe: &Path) -> Option<&'static str> {
 
 fn continue_next(p: &Paths) -> Result<()> {
     let cfg = Config::load(p)?;
-    let Some(i) = cfg.next_index(cfg.active_index(p)) else {
+    let Some(next) = cfg.next_index(cfg.active_index(p)) else {
         bail!("Add another account to continue on it.");
     };
-    let a = &cfg.accounts[i];
-    switch(p, Some(a))?;
-    let body = format!("{}\nclaude --continue", mac::env_line(Some(&a.dir)));
+    let a = next.map(|i| &cfg.accounts[i]);
+    switch(p, a)?;
+    let body = format!(
+        "{}\nclaude --continue",
+        mac::env_line(a.map(|a| a.dir.as_path()))
+    );
     mac::open_terminal(&cfg.terminal, &p.root, &state::last_cwd(p), &body)
 }
 
