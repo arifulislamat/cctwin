@@ -101,6 +101,8 @@ jobs:
   homebrew:
     needs: build
     runs-on: ubuntu-24.04
+    # The deploy key is an environment secret; the environment only accepts v* tags.
+    environment: homebrew
     steps:
       - uses: actions/checkout@v7
         with:
