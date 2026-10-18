@@ -105,7 +105,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: arifulislamat/homebrew-tap
-          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          # Deploy key with write access to the tap repo only (the default token can't push there).
+          ssh-key: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
       - name: Update formula
         env:
           VERSION: ${{ needs.build.outputs.version }}
