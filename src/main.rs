@@ -5,6 +5,8 @@ mod state;
 use anyhow::{Result, bail};
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState, hotkey::HotKey};
 use state::{Account, Config, Paths};
+use std::io::IsTerminal;
+use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
@@ -14,7 +16,8 @@ use tao::platform::macos::{ActivationPolicy, EventLoopExtMacOS};
 use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
 use tray_icon::{TrayIcon, TrayIconBuilder};
 
-const USAGE: &str = "usage: cctwin                  run the menu bar app
+const USAGE: &str = "usage: cctwin                  start the menu bar app in the background
+       cctwin --foreground     run the menu bar app attached to this terminal
        cctwin list             list accounts (* = active)
        cctwin use <name>       switch to an account (nickname, email, id or \"default\")
        cctwin init <shell>     print the shell hook (zsh, bash, fish)
@@ -30,7 +33,10 @@ fn main() {
         .collect();
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
     let r = match args.as_slice() {
-        [] => tray(),
+        // From a terminal, hand off to a background process so the shell is free; the .app and
+        // LaunchAgent have no terminal and run the menu bar app directly.
+        [] if std::io::stdin().is_terminal() => start_detached(),
+        [] | ["--foreground"] => tray(),
         ["list"] => list(),
         ["use", name] => cli_use(name),
         ["init", shell] => hook::script(shell).map(|s| print!("{s}")),
@@ -104,13 +110,37 @@ enum Ev {
     Refresh,
 }
 
-fn tray() -> Result<()> {
-    let p = Paths::new();
+/// Single-instance lock, held for the life of the menu bar app.
+fn lock(p: &Paths) -> Result<std::fs::File> {
     state::mkdir_private(&p.root)?;
     let lock = std::fs::File::create(p.root.join("lock"))?;
     if lock.try_lock().is_err() {
-        bail!("already running");
+        bail!("already running in the menu bar");
     }
+    Ok(lock)
+}
+
+fn start_detached() -> Result<()> {
+    let p = Paths::new();
+    drop(lock(&p)?); // fail here, visibly, if it is already running
+    let log = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(p.root.join("cctwin.log"))?;
+    Command::new(exe()?)
+        .arg("--foreground")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(log)
+        .process_group(0) // survives closing the terminal and Ctrl+C
+        .spawn()?;
+    println!("cctwin is running in the menu bar.");
+    Ok(())
+}
+
+fn tray() -> Result<()> {
+    let p = Paths::new();
+    let lock = lock(&p)?;
 
     let mut event_loop = EventLoopBuilder::<Ev>::with_user_event().build();
     event_loop.set_activation_policy(ActivationPolicy::Accessory);
