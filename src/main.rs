@@ -4,14 +4,17 @@ compile_error!("cctwin supports macOS only for now: https://github.com/arifulisl
 mod hook;
 mod mac;
 mod state;
+mod welcome;
 
 use anyhow::{Result, bail};
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState, hotkey::HotKey};
+use objc2::MainThreadMarker;
 use state::{Account, Config, Paths};
 use std::io::IsTerminal;
 use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::Command;
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 use tao::event::{Event, StartCause};
 use tao::event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy};
@@ -25,8 +28,6 @@ const USAGE: &str = "usage: cctwin                  start the menu bar app in th
        cctwin use <name>       switch to an account (nickname, email, id or \"default\")
        cctwin init <shell>     print the shell hook (zsh, bash, fish)
        cctwin --version";
-
-const NOTICE: &str = "cctwin points Claude Code at one of several config folders. It never reads or copies your login tokens.\n\nOnly add Claude accounts you personally own, and check Anthropic's current terms. Switching is always your action; cctwin never rotates accounts on its own.";
 
 fn main() {
     // Finder on older macOS passes -psn_<id> when launching the .app
@@ -110,7 +111,18 @@ fn name_of(p: &Paths, acc: Option<&Account>) -> String {
 enum Ev {
     Menu(MenuEvent),
     Hotkey(GlobalHotKeyEvent),
+    Welcome(&'static str),
     Refresh,
+}
+
+/// Lets the welcome window's controls reach the event loop.
+static PROXY: OnceLock<Mutex<EventLoopProxy<Ev>>> = OnceLock::new();
+
+/// Called by the welcome window's controls; handled in the event loop like a menu click.
+pub fn welcome_action(action: &'static str) {
+    if let Some(px) = PROXY.get() {
+        let _ = px.lock().unwrap().send_event(Ev::Welcome(action));
+    }
 }
 
 /// Single-instance lock, held for the life of the menu bar app.
@@ -148,6 +160,7 @@ fn tray() -> Result<()> {
     let mut event_loop = EventLoopBuilder::<Ev>::with_user_event().build();
     event_loop.set_activation_policy(ActivationPolicy::Accessory);
     let proxy = event_loop.create_proxy();
+    let _ = PROXY.set(Mutex::new(proxy.clone()));
     let px = proxy.clone();
     MenuEvent::set_event_handler(Some(move |e| drop(px.send_event(Ev::Menu(e)))));
     let px = proxy.clone();
@@ -166,8 +179,9 @@ fn tray() -> Result<()> {
                         .build()
                         .expect("tray icon"),
                 );
-                report(startup(&p, &hotkeys, &proxy));
+                report(startup(&p, &hotkeys));
             }
+            Event::UserEvent(Ev::Welcome(a)) => report(on_welcome(&p, &proxy, a)),
             Event::UserEvent(Ev::Menu(e)) => report(on_menu(&p, &proxy, e.id.0.as_str())),
             Event::UserEvent(Ev::Hotkey(e)) if e.state == HotKeyState::Pressed => {
                 report(continue_next(&p))
@@ -178,6 +192,7 @@ fn tray() -> Result<()> {
         if let Some(t) = &tray {
             report(refresh(&p, t));
         }
+        welcome::refresh(&p);
     })
 }
 
@@ -213,7 +228,7 @@ fn icon() -> tray_icon::Icon {
 fn report(r: Result<()>) {
     if let Err(e) = r {
         eprintln!("cctwin: {e:#}");
-        mac::tell(format!("{e:#}"));
+        mac::tell("cctwin ran into a problem", &format!("{e:#}"));
     }
 }
 
@@ -230,7 +245,12 @@ fn exe() -> Result<std::path::PathBuf> {
     Ok(std::env::current_exe()?)
 }
 
-fn startup(p: &Paths, hotkeys: &GlobalHotKeyManager, proxy: &EventLoopProxy<Ev>) -> Result<()> {
+fn main_thread() -> MainThreadMarker {
+    MainThreadMarker::new().expect("runs on the main thread")
+}
+
+fn startup(p: &Paths, hotkeys: &GlobalHotKeyManager) -> Result<()> {
+    mac::set_app_icon(main_thread());
     let mut cfg = Config::load(p)?;
     mac::setenv(state::active_dir(p).as_deref()); // launchctl env does not survive a reboot
     if state::adopt_strays(p, &mut cfg)? {
@@ -259,37 +279,45 @@ fn startup(p: &Paths, hotkeys: &GlobalHotKeyManager, proxy: &EventLoopProxy<Ev>)
         ))),
     }
     if !cfg.notice_shown {
-        bg(proxy, |p| {
-            mac::alert(NOTICE);
-            if mac::confirm(
-                "Install the shell hook in ~/.zshrc so `claude` in new terminals follows the active account?",
-                "Install",
-            ) {
-                install_hook()?;
-            }
-            let mut cfg = Config::load(p)?;
-            cfg.notice_shown = true;
-            cfg.save(p)
-        });
+        welcome::show(main_thread(), p);
     }
     Ok(())
 }
 
-fn install_hook() -> Result<()> {
+/// Controls in the welcome window.
+fn on_welcome(p: &Paths, proxy: &EventLoopProxy<Ev>, action: &str) -> Result<()> {
+    match action {
+        "ack" | "unack" => {
+            let mut cfg = Config::load(p)?;
+            cfg.notice_shown = action == "ack";
+            cfg.save(p)?;
+        }
+        "hook" => install_hook(true)?,
+        "done" => welcome::close(),
+        other => on_menu(p, proxy, other)?, // "add", "login"
+    }
+    Ok(())
+}
+
+/// `quiet`: the welcome window shows a checkmark instead of a dialog.
+fn install_hook(quiet: bool) -> Result<()> {
     let home = std::env::home_dir().unwrap();
     let changed = hook::install(&home, &exe()?)?;
     let names: Vec<_> = changed
         .iter()
         .map(|f| f.strip_prefix(&home).unwrap_or(f).display().to_string())
         .collect();
-    mac::tell(if names.is_empty() {
-        "Shell hook already installed.".into()
-    } else {
-        format!(
-            "Shell hook added to ~/{}. Open a new terminal tab; tabs that are already open keep the old setup until you run `source ~/.zshrc`.",
-            names.join(", ~/")
-        )
-    });
+    if !quiet {
+        let body = if names.is_empty() {
+            "Your shell config already loads it.".to_string()
+        } else {
+            format!(
+                "Added to ~/{}. Open a new terminal tab; tabs that are already open pick it up after `source ~/.zshrc`.",
+                names.join(", ~/")
+            )
+        };
+        mac::tell("Shell hook installed", &body);
+    }
     Ok(())
 }
 
@@ -364,6 +392,7 @@ fn refresh(p: &Paths, tray: &TrayIcon) -> Result<()> {
         ),
         &CheckMenuItem::with_id("login", "Launch at login", true, cfg.launch_at_login, None),
         &MenuItem::with_id("hook", "Install shell hook", true, None),
+        &MenuItem::with_id("welcome", "Welcome & setup…", true, None),
         &MenuItem::with_id("quit", "Quit cctwin", true, None),
     ])?;
     tray.set_menu(Some(Box::new(menu)));
@@ -411,10 +440,10 @@ fn on_menu(p: &Paths, proxy: &EventLoopProxy<Ev>, id: &str) -> Result<()> {
         "ide" => bg(proxy, move |p| {
             let cfg = Config::load(p)?;
             let ide = &cfg.ide_app;
-            let msg = format!(
-                "{ide} is already running and keeps the account it started with. Quit it first for the switch to apply."
-            );
-            if mac::app_running(ide) && !mac::confirm(&msg, "Open anyway") {
+            let title = format!("{ide} is already running");
+            let body =
+                "It keeps the account it started with. Quit it first for the switch to apply.";
+            if mac::app_running(ide) && !mac::confirm(&title, body, "Open anyway", false) {
                 return Ok(());
             }
             mac::open_ide(ide, target.as_deref(), &state::last_cwd(p))
@@ -440,7 +469,8 @@ fn on_menu(p: &Paths, proxy: &EventLoopProxy<Ev>, id: &str) -> Result<()> {
             mac::set_launch_at_login(cfg.launch_at_login, &exe()?, &p.root.join("cctwin.log"))?;
             cfg.save(p)?;
         }
-        "hook" => install_hook()?,
+        "hook" => install_hook(false)?,
+        "welcome" => welcome::show(main_thread(), p),
         "quit" => std::process::exit(0),
         _ => {}
     }
@@ -487,12 +517,13 @@ fn add(p: &Paths) -> Result<()> {
         .take(32)
         .collect::<String>();
     let nickname = loop {
-        let Some(name) = mac::input(&format!("Nickname for {email}"), &suggested) else {
+        let body = format!("Signed in as {email}. Pick a short name for the menu.");
+        let Some(name) = mac::input("Name this account", &body, &suggested) else {
             break String::new();
         };
         match Config::load(p)?.validate_nickname(&name, None) {
             Ok(n) => break n,
-            Err(e) => mac::alert(&e.to_string()),
+            Err(e) => mac::alert("Choose another nickname", &e.to_string()),
         }
     };
     let mut cfg = Config::load(p)?;
@@ -504,7 +535,8 @@ fn add(p: &Paths) -> Result<()> {
 fn rename(p: &Paths, acc: &Account) -> Result<()> {
     let current = name_of(p, Some(acc));
     loop {
-        let Some(name) = mac::input(&format!("New nickname for {current}"), &acc.nickname) else {
+        let title = format!("Rename {current}");
+        let Some(name) = mac::input(&title, "Up to 32 characters.", &acc.nickname) else {
             return Ok(());
         };
         let mut cfg = Config::load(p)?;
@@ -516,15 +548,16 @@ fn rename(p: &Paths, acc: &Account) -> Result<()> {
                     .for_each(|a| a.nickname = n.clone());
                 return cfg.save(p);
             }
-            Err(e) => mac::alert(&e.to_string()),
+            Err(e) => mac::alert("Choose another nickname", &e.to_string()),
         }
     }
 }
 
 fn remove(p: &Paths, acc: &Account) -> Result<()> {
     let name = name_of(p, Some(acc));
-    let msg = format!("Remove {name}? It is logged out of Claude Code and its folder is deleted.");
-    if !mac::confirm(&msg, "Remove") {
+    let title = format!("Remove {name}?");
+    let body = "It is logged out of Claude Code and its folder is deleted. History shared through Shared session history stays in ~/.claude.";
+    if !mac::confirm(&title, body, "Remove", true) {
         return Ok(());
     }
     // Switch away first, so a `claude` started meanwhile can't recreate the folder.

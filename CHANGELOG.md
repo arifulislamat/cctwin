@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Welcome window on first run: terms, shell hook, first account and launch at login as a checklist. Reopen it from the menu with **Welcome & setup…**.
+- Native macOS dialogs with the cctwin icon for adding, renaming and removing accounts (replacing AppleScript popups).
+- Styled `.dmg`: drag-to-Applications window with a background, arrow and volume icon.
+
 ## [0.1.2] - 2026-10-18
 
 ### Fixed

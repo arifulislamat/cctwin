@@ -94,7 +94,11 @@ name = "cctwin"
 version = "0.1.2"
 dependencies = [
  "anyhow",
+ "dispatch2",
  "global-hotkey",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
  "serde",
  "serde_json",
  "tao",

@@ -47,7 +47,7 @@ Then start it:
 cctwin
 ```
 
-On first run it shows a short notice and offers to install the shell hook. Tick **Launch at login** in the menu to keep it running.
+On first run a welcome window walks you through it: accept the terms, install the shell hook, add your first account, and choose whether cctwin starts at login. Reopen it any time with **Welcome & setup…** in the menu.
 
 ## Use
 

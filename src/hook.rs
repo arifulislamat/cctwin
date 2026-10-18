@@ -30,6 +30,18 @@ pub fn script(shell: &str) -> Result<&'static str> {
     }
 }
 
+/// Whether any shell config already loads the hook.
+pub fn installed(home: &Path) -> bool {
+    [
+        ".zshrc",
+        ".bash_profile",
+        ".bashrc",
+        ".config/fish/config.fish",
+    ]
+    .iter()
+    .any(|rc| fs::read_to_string(home.join(rc)).is_ok_and(|s| s.contains("# cctwin")))
+}
+
 /// Add the eval line to ~/.zshrc (always) and to the bash/fish rc files that exist. Returns files changed.
 pub fn install(home: &Path, exe: &Path) -> Result<Vec<PathBuf>> {
     let exe = exe.to_string_lossy().replace('\'', r"'\''");
@@ -124,7 +136,9 @@ mod tests {
             assert_eq!(cwd.trim(), "/tmp", "{}", shell[0]);
         }
 
+        assert!(!installed(&home));
         let changed = install(&home, Path::new("/opt/x/cctwin")).unwrap();
+        assert!(installed(&home));
         assert_eq!(changed, vec![home.join(".zshrc")]);
         assert!(
             install(&home, Path::new("/opt/x/cctwin"))

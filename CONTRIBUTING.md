@@ -22,8 +22,10 @@ The tests run the shell hook under zsh and bash with a fake `claude`, check shel
 
 ## Manual checks
 
-The menu bar UI can't be tested in CI. Before a release, or after a menu change, check by hand:
+The menu bar UI can't be tested in CI. Building the `.dmg` locally needs `pipx install dmgbuild`. Before a release, or after a menu change, check by hand:
 
+- [ ] First run shows the welcome window; its Install, Add account and login controls work and turn into ✓
+- [ ] The .dmg opens as a drag-to-Applications window with the background and arrow
 - [ ] Add account: Terminal opens `claude auth login`, a nickname prompt appears after login
 - [ ] Switch: `/status` in a new terminal shows the chosen account; a running session keeps its own
 - [ ] Manage accounts › account › Open terminal stays on that account after switching in the menu
@@ -39,9 +41,10 @@ src/main.rs    CLI commands, menu bar app, menu actions
 src/state.rs   config, accounts, active account, shared-history links
 src/mac.rs     osascript dialogs, launchctl, Terminal and IDE launching, LaunchAgent
 src/hook.rs    the `claude` shell wrapper for zsh, bash and fish
+src/welcome.rs first-run welcome window (AppKit)
 tests/cli.rs   command-line smoke tests
 install.sh     curl installer
-packaging/     cctwin.app Info.plist, app icon (and the script that draws it), dmg.sh
+packaging/     cctwin.app Info.plist, app icon, .dmg background and layout (with the scripts that draw them), dmg.sh
 ```
 
 ## Releasing

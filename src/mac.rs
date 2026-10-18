@@ -1,5 +1,9 @@
-// macOS glue: osascript dialogs, launchctl env, Terminal and IDE launching, LaunchAgent.
+// macOS glue: native dialogs, launchctl env, Terminal and IDE launching, LaunchAgent.
 use anyhow::{Result, bail};
+use dispatch2::run_on_main;
+use objc2::{AllocAnyThread, MainThreadMarker};
+use objc2_app_kit::{NSAlert, NSAlertFirstButtonReturn, NSApplication, NSImage, NSTextField};
+use objc2_foundation::{NSData, NSPoint, NSRect, NSSize, NSString};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -30,33 +34,74 @@ fn osa(script: &str) -> Option<String> {
         .then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
-/// Non-blocking alert. (osascript notifications belong to Script Editor and open it when clicked.)
-pub fn tell(msg: String) {
-    std::thread::spawn(move || alert(&msg));
+/// Make the cctwin icon the app icon, so dialogs and the welcome window show it even for the
+/// Homebrew binary, which has no app bundle.
+pub fn set_app_icon(mtm: MainThreadMarker) {
+    let data = NSData::with_bytes(include_bytes!("../packaging/cctwin.icns"));
+    if let Some(icon) = NSImage::initWithData(NSImage::alloc(), &data) {
+        unsafe { NSApplication::sharedApplication(mtm).setApplicationIconImage(Some(&icon)) };
+    }
 }
 
-pub fn alert(msg: &str) {
-    osa(&format!(
-        "display dialog {} with title \"cctwin\" buttons {{\"OK\"}} default button \"OK\"",
-        q(msg)
-    ));
+/// Bring cctwin to the front; a menu bar app is never active on its own.
+pub fn activate(mtm: MainThreadMarker) {
+    #[allow(deprecated)]
+    NSApplication::sharedApplication(mtm).activateIgnoringOtherApps(true);
 }
 
-pub fn confirm(msg: &str, ok: &str) -> bool {
-    let script = format!(
-        "display dialog {} with title \"cctwin\" buttons {{\"Cancel\", {ok}}} default button {ok} cancel button \"Cancel\"",
-        q(msg),
-        ok = q(ok)
-    );
-    osa(&script).is_some()
+/// Native dialog with the cctwin icon, run on the main thread from any thread. The first button is
+/// the default. Returns whether it was pressed and the text field's contents (when `field` is set).
+fn dialog(
+    title: &str,
+    body: &str,
+    buttons: &[&str],
+    field: Option<&str>,
+    destructive: bool,
+) -> (bool, String) {
+    let (title, body, field) = (title.to_string(), body.to_string(), field.map(String::from));
+    let buttons: Vec<String> = buttons.iter().map(|b| b.to_string()).collect();
+    run_on_main(move |mtm| {
+        let alert = NSAlert::new(mtm);
+        alert.setMessageText(&NSString::from_str(&title));
+        alert.setInformativeText(&NSString::from_str(&body));
+        for (i, b) in buttons.iter().enumerate() {
+            let button = alert.addButtonWithTitle(&NSString::from_str(b));
+            button.setHasDestructiveAction(i == 0 && destructive);
+        }
+        let text = field.map(|v| {
+            let text = NSTextField::textFieldWithString(&NSString::from_str(&v), mtm);
+            text.setFrame(NSRect::new(NSPoint::new(0., 0.), NSSize::new(260., 24.)));
+            alert.setAccessoryView(Some(&text));
+            alert.window().setInitialFirstResponder(Some(&text));
+            text
+        });
+        activate(mtm);
+        let ok = alert.runModal() == NSAlertFirstButtonReturn;
+        (
+            ok,
+            text.map(|t| t.stringValue().to_string())
+                .unwrap_or_default(),
+        )
+    })
 }
 
-pub fn input(msg: &str, default: &str) -> Option<String> {
-    osa(&format!(
-        "text returned of (display dialog {} default answer {} with title \"cctwin\")",
-        q(msg),
-        q(default)
-    ))
+pub fn alert(title: &str, body: &str) {
+    dialog(title, body, &["OK"], None, false);
+}
+
+/// Alert that doesn't block the caller, for errors and confirmations.
+pub fn tell(title: &str, body: &str) {
+    let (title, body) = (title.to_string(), body.to_string());
+    std::thread::spawn(move || alert(&title, &body));
+}
+
+pub fn confirm(title: &str, body: &str, ok: &str, destructive: bool) -> bool {
+    dialog(title, body, &[ok, "Cancel"], None, destructive).0
+}
+
+pub fn input(title: &str, body: &str, default: &str) -> Option<String> {
+    let (ok, text) = dialog(title, body, &["Save", "Cancel"], Some(default), false);
+    ok.then_some(text)
 }
 
 /// Set CLAUDE_CONFIG_DIR for GUI apps launched from now on; None unsets it (Default account).
