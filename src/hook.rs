@@ -3,7 +3,9 @@ use anyhow::{Result, bail};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const POSIX: &str = r#"claude() {
+// `function` keyword: a user alias named claude (common: --dangerously-skip-permissions) would
+// break `claude() {` in zsh and bash, and the hook would silently not load.
+const POSIX: &str = r#"function claude {
   local d="${CCTWIN_PIN:-$(cat "$HOME/.cctwin/active" 2>/dev/null)}"
   [ -d "$HOME/.cctwin" ] && printf '%s\n' "$PWD" > "$HOME/.cctwin/last_cwd"
   if [ -n "$d" ]; then CLAUDE_CONFIG_DIR="$d" command claude "$@"; else env -u CLAUDE_CONFIG_DIR claude "$@"; fi
@@ -104,10 +106,12 @@ mod tests {
         for shell in [&["zsh", "-fc"][..], &["bash", "--norc", "-c"]] {
             let run = |active: &str, env: &[(&str, &str)]| {
                 fs::write(home.join(".cctwin/active"), active).unwrap();
-                let script = format!("{POSIX}\ncd /tmp && claude");
+                // eval like the rc line does, after an alias named claude (it broke `claude() {`)
+                let script = "shopt -s expand_aliases 2>/dev/null\nalias claude=claude\neval \"$HOOK\"\ncd /tmp && claude";
                 let out = Command::new(shell[0])
                     .args(&shell[1..])
                     .arg(script)
+                    .env("HOOK", POSIX)
                     .env("HOME", &home)
                     .env(
                         "PATH",
