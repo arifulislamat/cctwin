@@ -23,7 +23,11 @@ const USAGE: &str = "usage: cctwin                  run the menu bar app
 const NOTICE: &str = "cctwin points Claude Code at one of several config folders. It never reads or copies your login tokens.\n\nOnly add Claude accounts you personally own, and check Anthropic's current terms. Switching is always your action; cctwin never rotates accounts on its own.";
 
 fn main() {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    // Finder on older macOS passes -psn_<id> when launching the .app
+    let args: Vec<String> = std::env::args()
+        .skip(1)
+        .filter(|a| !a.starts_with("-psn_"))
+        .collect();
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
     let r = match args.as_slice() {
         [] => tray(),
@@ -196,6 +200,25 @@ fn exe() -> Result<std::path::PathBuf> {
 fn startup(p: &Paths, hotkeys: &GlobalHotKeyManager, proxy: &EventLoopProxy<Ev>) -> Result<()> {
     let cfg = Config::load(p)?;
     mac::setenv(state::active_dir(p).as_deref()); // launchctl env does not survive a reboot
+    // An Add cut short by quitting leaves a folder that is not in the config: log it out and delete it.
+    let orphans: Vec<_> = std::fs::read_dir(p.root.join("accounts"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|d| !cfg.accounts.iter().any(|a| &a.dir == d))
+        .collect();
+    if !orphans.is_empty() {
+        bg(proxy, move |_| {
+            for dir in orphans {
+                if state::read_email(&dir.join(".claude.json")).is_some() {
+                    logout(&dir);
+                }
+                state::delete_account_dir(&dir)?;
+            }
+            Ok(())
+        });
+    }
     if cfg.shared_history {
         for a in &cfg.accounts {
             state::link_shared(p, &a.dir)?; // picks up items created in ~/.claude since last run

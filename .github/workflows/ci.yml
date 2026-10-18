@@ -27,4 +27,4 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
-      - run: shellcheck install.sh
+      - run: shellcheck install.sh packaging/dmg.sh

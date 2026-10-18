@@ -41,13 +41,14 @@ src/mac.rs     osascript dialogs, launchctl, Terminal and IDE launching, LaunchA
 src/hook.rs    the `claude` shell wrapper for zsh, bash and fish
 tests/cli.rs   command-line smoke tests
 install.sh     curl installer
+packaging/     cctwin.app Info.plist, app icon (and the script that draws it), dmg.sh
 ```
 
 ## Releasing
 
 1. Update `version` in `Cargo.toml` and move "Unreleased" in `CHANGELOG.md` under the new version.
 2. Commit, then tag and push: `git tag v0.2.0 && git push origin v0.2.0`.
-3. The release workflow builds a universal binary, publishes the GitHub release, crates.io and the Homebrew formula, then installs the release on a clean runner to verify it.
+3. The release workflow builds a universal binary and `.dmg`, publishes the GitHub release, crates.io and the Homebrew formula, then installs the release on a clean runner to verify it.
 
 ## Reporting security issues
 

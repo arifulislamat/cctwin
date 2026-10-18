@@ -21,6 +21,7 @@ First release, macOS only.
 - Open VS Code (or any configured app) with the active account.
 - Launch at login.
 - CLI: `cctwin list`, `cctwin use <name>`, `cctwin init <shell>`.
+- Install with Homebrew, the install script, `cargo install`, or a `.dmg` with `cctwin.app` (universal, Apple Silicon and Intel).
 
 [Unreleased]: https://github.com/arifulislamat/cctwin/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/arifulislamat/cctwin/releases/tag/v0.1.0

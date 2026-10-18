@@ -48,16 +48,25 @@ jobs:
           ARCHIVE="cctwin-${{ steps.tag.outputs.version }}-universal-apple-darwin.tar.gz"
           tar -czf "$ARCHIVE" cctwin README.md LICENSE
           shasum -a 256 "$ARCHIVE" > "$ARCHIVE.sha256"
-          echo "archive=$ARCHIVE" >> "$GITHUB_OUTPUT"
-          echo "sha256=$(cut -d' ' -f1 "$ARCHIVE.sha256")" >> "$GITHUB_OUTPUT"
-      # Signed record of which commit and workflow built the archive: `gh attestation verify`.
+          DMG="cctwin-${{ steps.tag.outputs.version }}.dmg"
+          packaging/dmg.sh cctwin "${{ steps.tag.outputs.version }}" "$DMG"
+          shasum -a 256 "$DMG" > "$DMG.sha256"
+          {
+            echo "archive=$ARCHIVE"
+            echo "dmg=$DMG"
+            echo "sha256=$(cut -d' ' -f1 "$ARCHIVE.sha256")"
+          } >> "$GITHUB_OUTPUT"
+      # Signed record of which commit and workflow built each file: `gh attestation verify`.
       - uses: actions/attest-build-provenance@v4
         with:
-          subject-path: ${{ steps.package.outputs.archive }}
+          subject-path: |
+            ${{ steps.package.outputs.archive }}
+            ${{ steps.package.outputs.dmg }}
       - name: GitHub release
         run: |
           gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes \
-            "${{ steps.package.outputs.archive }}" "${{ steps.package.outputs.archive }}.sha256"
+            "${{ steps.package.outputs.archive }}" "${{ steps.package.outputs.archive }}.sha256" \
+            "${{ steps.package.outputs.dmg }}" "${{ steps.package.outputs.dmg }}.sha256"
         env:
           GH_TOKEN: ${{ github.token }}
 
@@ -152,9 +161,13 @@ jobs:
         run: |
           brew install arifulislamat/tap/cctwin
           "$(brew --prefix)/bin/cctwin" --version | grep -qx "cctwin $VERSION"
-      - name: Provenance
+      - name: DMG and provenance
         run: |
-          gh release download "$GITHUB_REF_NAME" --pattern '*.tar.gz'
+          gh release download "$GITHUB_REF_NAME" --pattern '*.tar.gz' --pattern '*.dmg'
           gh attestation verify cctwin-*.tar.gz --repo "$GITHUB_REPOSITORY"
+          gh attestation verify cctwin-*.dmg --repo "$GITHUB_REPOSITORY"
+          MNT=$(hdiutil attach -nobrowse -readonly cctwin-*.dmg | tail -1 | cut -f3)
+          "$MNT/cctwin.app/Contents/MacOS/cctwin" --version | grep -qx "cctwin $VERSION"
+          hdiutil detach "$MNT"
         env:
           GH_TOKEN: ${{ github.token }}
