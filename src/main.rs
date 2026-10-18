@@ -592,8 +592,11 @@ fn add(p: &Paths) -> Result<()> {
     if cfg.shared_history {
         state::link_shared(p, &dir)?;
     }
+    // `claude auth login` doesn't echo the pasted code, so people think the paste failed.
     let body = format!(
-        "echo 'cctwin: log in with the account you want to add.'\n{}\nclaude auth login",
+        "echo 'cctwin: log in with the account you want to add.'\n\
+         echo 'Signing in on another device? Open the link below there, then paste the code here and press Return. The code stays hidden while you paste.'\n\
+         echo\n{}\nclaude auth login",
         mac::env_line(Some(&dir))
     );
     mac::open_terminal(&cfg.terminal, &p.root, &state::last_cwd(p), &body)?;

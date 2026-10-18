@@ -72,7 +72,7 @@ Click the critter icon in the menu bar:
   Quit cctwin
 ```
 
-- **Add account…** opens Terminal running `claude auth login` in a new folder. Log in with the account you want, and cctwin asks for a nickname once the login lands.
+- **Add account…** opens Terminal running `claude auth login` in a new folder. Log in with the account you want, and cctwin asks for a nickname once the login lands. To use an account that's signed in on another device, open the printed link there, approve, then paste the code back into the terminal and press Return. `claude auth login` hides the code while you paste, so the line stays blank.
 - **Click an account** to make it active. New `claude` sessions use it, and sessions that are already running keep theirs. Terminal tabs opened before the shell hook was installed need `source ~/.zshrc` once.
 - **Manage accounts › account › Open terminal** opens a window locked to that account. It stays on it even when you switch in the menu, so you can use two accounts at the same time.
 - **Continue on next account** (`⌥⇧⌘C`) is for when one plan hits its usage limit. It switches to the next account in the menu (after the last one it goes back to Default) and opens Terminal in the folder where you last ran `claude`, running `claude --continue`. Turn on **Shared session history** first, so the other account can see the conversation.
